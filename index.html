@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>索尼电视免费投屏：DLNA + AirPlay 一个开源接收器全搞定（含避坑）</title>
+<meta name="description" content="实测教程：在索尼 Android TV 上用开源接收器 MiracastReceiver 同时实现国内 App 的 DLNA 投屏（B站/优酷/爱奇艺）和 iPhone/Mac 的 AirPlay。每步带验证方法，含三个高频坑与少数机型 AirPlay 不显示的修复方案。">
+<style>
+:root {
+  --bg: #f4f1ea;
+  --paper: #fffdf8;
+  --ink: #1c1915;
+  --muted: #5c564c;
+  --line: #e4d9c8;
+  --accent: #9d3418;
+  --ok: #1f6b45;
+  --warn: #8a5a12;
+  --code: #241f1a;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background:
+    radial-gradient(1200px 420px at 50% -80px, #fff 0%, transparent 60%),
+    var(--bg);
+  color: var(--ink);
+  font: 18px/1.7 "Iowan Old Style", Palatino, "Palatino Linotype", "Songti SC", "Noto Serif SC", serif;
+}
+header, main, footer { width: min(46rem, calc(100% - 2rem)); margin: 0 auto; }
+header { padding: 3.4rem 0 0.4rem; }
+.kicker {
+  margin: 0 0 .55rem;
+  color: var(--accent);
+  font: 600 .76rem/1.4 "Avenir Next", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+h1 { margin: 0 0 .7rem; font-size: 2.2rem; line-height: 1.22; font-weight: 650; }
+.lead { margin: 0; color: var(--muted); font-size: 1.08rem; }
+main { padding-bottom: 3.5rem; }
+h2 { margin: 2.5rem 0 .55rem; font-size: 1.38rem; line-height: 1.3; }
+h3 { margin: 1.35rem 0 .35rem; font-size: 1.05rem; }
+p, li { font-family: "Avenir Next", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", sans-serif; }
+a { color: var(--accent); }
+.box, .warn, .ok {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 1rem 1.15rem;
+  margin: 1rem 0;
+}
+.warn { border-color: #efd3a4; background: #fff8ee; }
+.ok { border-color: #cfe3d6; background: #f3faf6; }
+.box strong, .warn strong, .ok strong { font-family: "Avenir Next", "PingFang SC", "Microsoft YaHei", sans-serif; }
+ol, ul { padding-left: 1.25rem; }
+li + li { margin-top: .38rem; }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0 1.25rem;
+  font-family: "Avenir Next", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: .95rem;
+}
+th, td { text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); padding: .6rem .35rem; }
+th { color: var(--muted); font-weight: 600; }
+td.sha code { white-space: normal; word-break: break-all; }
+code, pre {
+  font-family: "SF Mono", ui-monospace, "Source Code Pro", Menlo, Consolas, monospace;
+  font-size: .84rem;
+}
+code { background: #efe8dc; padding: .08rem .32rem; border-radius: 5px; }
+pre {
+  position: relative;
+  background: var(--code);
+  color: #f6f1e8;
+  padding: .95rem 1rem;
+  border-radius: 12px;
+  overflow-x: auto;
+  line-height: 1.5;
+}
+pre code { background: transparent; color: inherit; padding: 0; }
+pre .copy {
+  position: absolute;
+  top: .5rem;
+  right: .5rem;
+  border: 1px solid #575047;
+  border-radius: 7px;
+  padding: .18rem .55rem;
+  color: #d9d2c6;
+  background: #35302a;
+  font: 500 .72rem/1.5 "Avenir Next", "PingFang SC", "Microsoft YaHei", sans-serif;
+  cursor: pointer;
+}
+nav.toc {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: .85rem 1.15rem;
+  margin: 1.2rem 0 0;
+  font: .92rem/1.9 "Avenir Next", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+nav.toc a { display: inline-block; margin-right: 1rem; color: var(--ink); text-decoration: none; border-bottom: 1px dotted var(--muted); }
+footer {
+  padding: 0 0 3rem;
+  color: var(--muted);
+  font: .9rem/1.55 "Avenir Next", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+@media (max-width: 680px) {
+  header { padding-top: 2.2rem; }
+  h1 { font-size: 1.7rem; }
+  table { display: block; overflow-x: auto; white-space: nowrap; }
+  pre { font-size: .78rem; }
+}
+</style>
+</head>
+<body>
+<header>
+<p class="kicker">Sony BRAVIA · DLNA · AirPlay · 开源方案</p>
+<h1>索尼电视免费投屏：DLNA 和 AirPlay，一个接收器全搞定</h1>
+<p class="lead">国内视频 App 投屏走的是 DLNA，iPhone 和 Mac 走的是 AirPlay——两套协议，但一个开源接收器可以同时提供。这篇教程记录我们在索尼电视上的完整操作：每一步都写清「怎么做、看到什么算成功、出错怎么查」，全程不需要 root，不用花钱，也没有广告和会员。</p>
+</header>
+<main>
+
+<nav class="toc">
+<strong>目录：</strong>
+<a href="#preview">一、先说结果</a>
+<a href="#which">二、两种投屏先分清</a>
+<a href="#check">三、你的电视能不能用</a>
+<a href="#pitfalls">四、开始前必须知道的三个坑</a>
+<a href="#prepare">五、准备清单</a>
+<a href="#steps">六、操作步骤</a>
+<a href="#daily">七、日常使用</a>
+<a href="#faq">八、常见问题速查</a>
+<a href="#airplay-fix">九、专治：AirPlay 列表里没有电视</a>
+<a href="#safety">十、收尾与安全</a>
+<a href="#ai">十一、把这篇丢给 AI，让它带你做</a>
+<a href="#cheatsheet">附：速查表</a>
+<a href="#refs">参考资料</a>
+</nav>
+
+<h2 id="preview">一、先说结果</h2>
+<section class="ok">
+<p style="margin:0"><strong>一句话版本。</strong>用电脑通过 ADB，给索尼电视装一个开源 App <a href="https://github.com/weekdayjast/MiracastReceiver">MiracastReceiver</a>。装完就有两样东西：国内 App 的「投屏」能找到电视（DLNA 推送，手机可以切走，电视自己播）；iPhone、iPad、Mac 的 AirPlay 菜单里也能找到电视（屏幕镜像、投视频）。</p>
+</section>
+<ul>
+<li><strong>花费：</strong>0 元。开源软件，无广告、无会员、无登录。</li>
+<li><strong>需要：</strong>电视是安卓/Google TV，且设置里有「无线调试」（一般是 Android 11 及以上）；一台电脑（Windows 或 macOS）；两者连同一个 Wi-Fi。</li>
+<li><strong>时间：</strong>约 15 分钟。装完之后电脑就可以收起来，日常投屏不再需要它。</li>
+<li><strong>实测环境（本文所有细节以此为准）：</strong>2026-10-12，国行索尼 BRAVIA 4K AE1（系统里的设备名是 SONY XR-65A95L），Android 14，CPU 为 32 位（armeabi-v7a）。你的机器以自己电视上读到的信息为准，方法通用。</li>
+</ul>
+<div class="warn"><strong>写在前面：</strong>少数机型会遇到「DLNA 正常、但 AirPlay 列表里没有电视」的问题，我们这台就遇到了，原因和完整修复方案写在<a href="#airplay-fix">第九节</a>。先正常往下做，真遇到再去那里，不是你的操作问题。</div>
+
+<h2 id="which">二、两种投屏先分清</h2>
+<table>
+<thead><tr><th></th><th>DLNA 推送</th><th>AirPlay</th></tr></thead>
+<tbody>
+<tr><td>谁在用</td><td>B 站、优酷、爱奇艺等国内 App 的「投屏」按钮；Windows 媒体播放器、VLC、Emby 等</td><td>iPhone、iPad、Mac 的「屏幕镜像」和视频投屏</td></tr>
+<tr><td>播在哪</td><td>电视自己拉流播放。投上之后手机可以退出 App、去干别的</td><td>镜像时手机画面实时传过去，手机熄屏或退出就会断</td></tr>
+<tr><td>电视上要有什么</td><td>一个 DLNA/UPnP 接收端（MediaRenderer）</td><td><code>_airplay._tcp</code> 服务广播（音频另有 <code>_raop._tcp</code>）</td></tr>
+</tbody>
+</table>
+<p id="twonote">两个补充说明，避免后面误会：</p>
+<ul>
+<li><strong>搜得到设备，不等于每个视频都能播。</strong>这些 App 给出的视频地址常带短时鉴权，过期或源站拒绝时，任何接收端都补不了——换个视频或换清晰度重投即可，这不是安装出了问题。</li>
+<li><strong>Netflix、Apple TV+ 等 DRM 内容镜像时会黑屏，</strong>这是内容保护机制，属于正常现象。普通桌面、照片、网页和非 DRM 视频不受影响。</li>
+</ul>
+
+<h2 id="check">三、你的电视能不能用</h2>
+<p>满足这三条就可以：</p>
+<ol>
+<li><strong>电视机型：</strong>索尼 Android TV / Google TV（近些年的 BRAVIA 基本都是）。不是安卓系统的老 BRAVIA 没有这条路。</li>
+<li><strong>系统版本：</strong>Android 11 及以上——判断标志是「设置」里能找到<strong>「无线调试」</strong>（在开发者选项里）。现在找不到没关系，第六节第 1 步教你打开开发者选项。</li>
+<li><strong>网络：</strong>电视和电脑连同一个 Wi-Fi / 局域网。一边连主路由、一边连访客网络，后面会表现为连不上。</li>
+</ol>
+<div class="box">
+<p style="margin:.2rem 0"><strong>不太确定的旧机型：</strong>如果开发者选项里只有「网络调试」、固定端口 <code>5555</code>、没有配对码（Android 10 及更早），本文的端口流程不适用，可以参考<a href="#refs">文末参考</a>里的原教程。另外，安卓电视上的「广播名字」不一定等于系统型号（我们这台：AirPlay 广播名是 <code>SONY XR-65A95L</code>，系统读出来却是 <code>BRAVIA 4K AE1</code>），后面第六节第 4 步会让你核对，以连接后读到的为准。</p>
+</div>
+
+<h2 id="pitfalls">四、开始前必须知道的三个坑</h2>
+<section class="warn">
+<strong>坑 1：配对端口 ≠ 连接端口。</strong><br>
+电视的「无线调试」上有<strong>两个不同</strong>的端口：<strong>配对端口</strong>显示在「使用配对码配对设备」弹窗里，只在配对时有效；<strong>连接端口</strong>在无线调试主页面，连接用，而且会变。把配对端口拿去 <code>adb connect</code>、或把连接端口拿去 <code>adb pair</code>，都会失败，报错还看起来像网络问题。<strong>一切以电视屏幕上当时显示的为准。</strong>
+</section>
+<section class="warn">
+<strong>坑 2：APK 分 32 位和 64 位，下错装不上。</strong><br>
+下 APK 之前先查电视的 CPU 架构（第六节第 5 步有命令）：<code>armeabi-v7a</code> 是 32 位，<code>arm64-v8a</code> 是 64 位，要下对应的包。拿不准就下 <code>universal</code> 包（两种架构都在里面），多占 3 MB 而已。我们这台电视只有 32 位，64 位的包装不上。
+</section>
+<section class="warn">
+<strong>坑 3：少数机型 AirPlay 列表里不显示电视。</strong><br>
+表现是：DLNA 投屏正常、端口也正常，但 iPhone / Mac 的 AirPlay 菜单里找不到电视。我们实测的 BRAVIA 4K AE1 属于这一类，原因和修复方法在<a href="#airplay-fix">第九节</a>。先照常做，做到第六节第 7 步验证时留意一下即可，不是你操作错了。
+</section>
+
+<h2 id="prepare">五、准备清单</h2>
+<ul>
+<li>电视：开机、连着家里 Wi-Fi。</li>
+<li>电脑：Windows 或 macOS 都行，能连同一个 Wi-Fi。</li>
+<li>ADB 工具：第六节第 2 步装（macOS 一行命令；Windows 下一个官方压缩包）。无线调试<strong>不需要 USB 线</strong>，也不需要装驱动。</li>
+<li>接收器 APK：从官方 Release 下载，三选一：</li>
+</ul>
+<table>
+<thead><tr><th>文件（v1.2.5）</th><th>适用</th><th>大小</th><th>SHA-256（校验用）</th></tr></thead>
+<tbody>
+<tr><td><a href="https://github.com/weekdayjast/MiracastReceiver/releases/download/v1.2.5/miracast-receiver-v1.2.5-armeabi-v7a.apk">miracast-receiver-v1.2.5-armeabi-v7a.apk</a></td><td>32 位电视（如本文实测机型）</td><td>14.6 MB</td><td class="sha"><code>3609e32b12f0c8d86ee42f9a04326fda4b0680a54184f9780dad3c15272fd0b3</code></td></tr>
+<tr><td><a href="https://github.com/weekdayjast/MiracastReceiver/releases/download/v1.2.5/miracast-receiver-v1.2.5-arm64-v8a.apk">miracast-receiver-v1.2.5-arm64-v8a.apk</a></td><td>64 位电视（较新的机型）</td><td>15.1 MB</td><td class="sha"><code>e213cf71a8750b6fece303d6448b75197fe30c515bc97f5f80768df75fc8dc61</code></td></tr>
+<tr><td><a href="https://github.com/weekdayjast/MiracastReceiver/releases/download/v1.2.5/miracast-receiver-v1.2.5-universal.apk">miracast-receiver-v1.2.5-universal.apk</a></td><td>拿不准就选它（全架构）</td><td>17.8 MB</td><td class="sha"><code>88bf048568ee871e701b4a5227ee42f66b953176a18efe7473de2db28557ce1f</code></td></tr>
+</tbody>
+</table>
+<p>只从上面的 GitHub 官方发布页下载。<strong>不要用来路不明的 APK 站</strong>——那是往电视里装东西，来源比省事重要。</p>
+
+<h2 id="steps">六、操作步骤</h2>
+
+<h3>第 1 步：在电视上打开「无线调试」</h3>
+<ol>
+<li>确认电视和电脑连的是同一个局域网。</li>
+<li>电视上打开「设置 → 关于」（不同系统在「设备偏好设置」或「系统」分类里），找到「版本号」，<strong>连续点击约 7 次</strong>，直到提示开发者模式已开启。</li>
+<li>返回设置，进入「开发者选项」，打开<strong>「无线调试」</strong>。</li>
+<li>进入无线调试页面，你会看到两个东西：<strong>主页面显示 IP 和「连接端口」</strong>；点开「使用配对码配对设备」，弹窗里显示 <strong>6 位配对码 + IP + 「配对端口」</strong>。配对弹窗先不要关。</li>
+</ol>
+<div class="warn"><strong>看清楚了：</strong>这个弹窗里的端口是「配对端口」，只用于下一步的配对命令；连接用的是主页面那个「连接端口」。记不清就翻回<a href="#pitfalls">第四节坑 1</a>。</div>
+
+<h3>第 2 步：电脑装 ADB</h3>
+<p><strong>macOS（推荐 Homebrew）：</strong></p>
+<pre><code>brew install --cask android-platform-tools
+adb version</code></pre>
+<p>没有 Homebrew 的话，到 <a href="https://developer.android.com/tools/releases/platform-tools">Google 的 Platform-Tools 页面</a>下载 macOS 版 zip，解压后在该目录里用 <code>./adb</code>。</p>
+<p><strong>Windows：</strong></p>
+<ol>
+<li>同一下载页，选 <code>platform-tools-latest-windows.zip</code>，解压到一个固定目录，比如 <code>C:\platform-tools</code>。</li>
+<li>在该目录里打开 PowerShell（地址栏输入 <code>powershell</code> 回车也行）。</li>
+<li>运行：</li>
+</ol>
+<pre><code>cd C:\platform-tools
+.\adb.exe version</code></pre>
+<p>✅ <strong>怎么算成功：</strong>屏幕上打印出版本号（形如 <code>Android Debug Bridge version 1.0.41</code>）。</p>
+
+<h3>第 3 步：配对（输一次配对码）</h3>
+<p>电脑上运行（把 IP 和端口换成电视配对弹窗里显示的，下面只是例子）：</p>
+<pre><code>adb pair 192.168.1.30:40975</code></pre>
+<p>提示 <code>Enter pairing code:</code> 时，输入电视上那 6 位配对码（输入时屏幕上不显示字符，正常）。</p>
+<p>✅ <strong>怎么算成功：</strong>显示 <code>Successfully paired</code>。成功后配对弹窗可以关掉了。</p>
+<p><strong>两个注意：</strong></p>
+<ul>
+<li>配对码现用现输，别写进脚本或笔记。</li>
+<li>配对是一次性的，以后再用不用重新配（除非你在电视上「忘记」了这台电脑）。</li>
+</ul>
+
+<h3>第 4 步：连上电视，核对是不是这一台</h3>
+<pre><code>adb connect 192.168.1.30:43733</code></pre>
+<p>（用的是<strong>连接端口</strong>，在无线调试主页面，不是配对端口。示例数字只是格式演示，以电视上显示的为准。）</p>
+<p>✅ <strong>怎么算成功：</strong>显示 <code>connected to 192.168.1.30:43733</code>。然后核对设备：</p>
+<pre><code>adb -s 192.168.1.30:43733 shell getprop ro.product.model
+adb -s 192.168.1.30:43733 shell getprop ro.product.cpu.abi</code></pre>
+<ul>
+<li><strong>型号：</strong>和电视对得上就继续。对不上（比如家里有不止一台安卓设备）先 <code>adb disconnect</code> 换正确的 IP，不要稀里糊涂往下装。</li>
+<li><strong>ABI：</strong>这就是下一步选 APK 的依据。<code>armeabi-v7a</code> = 32 位，<code>arm64-v8a</code> = 64 位。</li>
+</ul>
+<p>说明：电视的「广播名字」可能和系统读出的型号不一样（我们这台广播名 <code>SONY XR-65A95L</code>、型号却是 <code>BRAVIA 4K AE1</code>），只要确认是你这台电视即可。</p>
+
+<h3>第 5 步：下载并安装接收器</h3>
+<ol>
+<li>按上一步读到的 ABI，从<a href="#prepare">第五节的下载表</a>里下载对应的 APK。</li>
+<li>（建议做）校验文件有没有下坏或被动过手脚：</li>
+</ol>
+<pre><code># macOS
+shasum -a 256 miracast-receiver-v1.2.5-armeabi-v7a.apk
+
+# Windows
+certutil -hashfile miracast-receiver-v1.2.5-armeabi-v7a.apk SHA256</code></pre>
+<p>输出和第五节表里的 SHA-256 一致即可。版本更新后校验值会变，届时以 Release 页面的说明为准，对不上就重下。</p>
+<ol start="3">
+<li>安装到电视：</li>
+</ol>
+<pre><code>adb -s 192.168.1.30:43733 install -r miracast-receiver-v1.2.5-armeabi-v7a.apk</code></pre>
+<p>✅ <strong>怎么算成功：</strong>显示 <code>Success</code>。（在终端里先 <code>cd</code> 到你下载 APK 的目录，再把文件名替换成实际文件名；这一步和上一步的校验命令都要在「APK 所在的目录」里执行。）</p>
+<ol start="4">
+<li>（可选）用命令直接把应用拉起来：</li>
+</ol>
+<pre><code>adb -s 192.168.1.30:43733 shell am start -n com.weekd.miracastreceiver/.ui.MainActivity</code></pre>
+<div class="warn"><strong>报 <code>INSTALL_FAILED_UPDATE_INCOMPATIBLE</code>？</strong>说明电视上装过签名不同的同款。先卸载再装：<code>adb -s 地址:端口 uninstall com.weekd.miracastreceiver</code>，然后重新 install。</div>
+
+<h3>第 6 步：电视上首次启动，把两个权限给它</h3>
+<ol>
+<li>电视上打开应用（叫 <code>Miracast Receiver</code>）。界面上会显示：<strong>设备名、设备 IP、「等待投屏连接...」、连接码</strong>，底部有「开机自动启动接收服务」开关——<strong>保持开启</strong>，这样以后电视重启后它自己工作，不用每次手动开。</li>
+<li>按提示授权：</li>
+</ol>
+<ul>
+<li><strong>「附近设备」（Android 13+）或「定位」（更早版本）：</strong>授予即可。拒绝也不影响 DLNA 和 AirPlay，但 Windows「无线显示器」类功能会不可用。</li>
+<li><strong>「显示在其他应用上层」：</strong><u>这个最容易漏，务必开启。</u>不开的后果：应用不在前台时（比如你退回电视桌面了），投屏连上也不会弹出播放画面，表现为「投屏没反应」。首次打开时应用会弹窗，点「去设置」开启；如果电视设置里没有这个选项页，用命令开：</li>
+</ul>
+<pre><code>adb -s 192.168.1.30:43733 shell appops set com.weekd.miracastreceiver SYSTEM_ALERT_WINDOW allow</code></pre>
+
+<h3>第 7 步：验证两件事</h3>
+<p><strong>A. DLNA（安卓手机投屏）：</strong>电脑上运行：</p>
+<pre><code>curl -fsS http://192.168.1.30:8080/device.xml</code></pre>
+<p>输出里应该能看到 <code>MediaRenderer</code>、<code>AVTransport</code>，以及 <code>friendlyName</code>（就是电视的设备名）。</p>
+<p>然后拿手机（连同一 Wi-Fi）打开 B 站 → 视频页点「投屏」→ 列表里应能找到电视的名字 → 点它，电视开始播放。<strong>投上之后把手机切到别的 App，电视画面不受影响</strong>——如果跟着断了，说明那个按钮走的是镜像，不是 DLNA 推送。</p>
+<p><strong>B. AirPlay（iPhone / iPad / Mac）：</strong>Mac 上运行：</p>
+<pre><code>dns-sd -B _airplay._tcp local.</code></pre>
+<p>应能看到电视的设备名（端口 7000）。然后 iPhone：从上角滑出控制中心 →「屏幕镜像」→ 选电视名。</p>
+<p>如果列表里还有一条名字带 <code>(2)</code> 的重复条目：两条一般指向同一台电视（同一端口），随便选哪条都能连。</p>
+<div class="warn"><strong>如果 AirPlay 列表里始终没有电视</strong>（DLNA 却正常）：去<a href="#airplay-fix">第九节</a>，那里有完整的确认方法和修复方案。</div>
+
+<h2 id="daily">七、日常使用</h2>
+<ul>
+<li><strong>国内 App：</strong>B 站、优酷、爱奇艺等，点「投屏」，选电视的设备名。DLNA 是让电视自己播，手机可以退出。</li>
+<li><strong>iPhone / iPad：</strong>控制中心 →「屏幕镜像」→ 选电视名。Mac：菜单栏控制中心 →「屏幕镜像」。</li>
+<li><strong>电视端不用每天开 App：</strong>「开机自动启动接收服务」默认开启，电视开机后服务在后台自动运行。电脑装完就可以收起来了。</li>
+<li><strong>投屏突然「没反应」：</strong>第一个检查「显示在其他应用上层」权限还在不在（恢复出厂、换账号后可能丢掉），见第六节第 6 步。</li>
+<li><strong>安全习惯：</strong>本方案没有账号登录，靠自家 Wi-Fi 这个内网环境隔离。不要把家里路由器上的 ADB 端口映射到公网，也不要在公共 Wi-Fi 下开无线调试。</li>
+</ul>
+
+<h2 id="faq">八、常见问题速查</h2>
+<h3>1）连接时报错 / macOS 提示 No route to host（错误 65）</h3>
+<p>这个报错只表示连接被拒绝，不代表一定是路由器的锅。按下面的顺序查，别跳步：</p>
+<ul>
+<li>先做一次对照测试（同一台电脑、同一端口）：
+<pre style="margin:.5rem 0"><code>nc -G 3 -v -z 192.168.1.30 43733</code></pre></li>
+<li><strong>系统「终端」能通，但跑 adb 的那个程序不通</strong> → 这是 macOS 的「本地网络」权限问题。打开「系统设置 → 隐私与安全性 → 本地网络」，允许你用的终端程序（Terminal / iTerm / 编辑器等）。<strong>允许后要把那个程序重启一遍</strong>，旧进程还带着旧权限。有的 App 旧版本系统不会弹窗提示，更新后再试。</li>
+<li><strong>终端也不通，但路由器地址能通</strong> → 查是不是访客网络、无线隔离（AP 隔离），或电视和电脑不在同一网段。</li>
+<li><strong>连路由器都不通</strong> → 电脑和电视根本不在同一个网络里。</li>
+</ul>
+<p>不要写 TCP 转发去绕过本地网络权限；也不要把 ADB 端口映射到公网。</p>
+<h3>2）APK 装不上</h3>
+<ul>
+<li><code>INSTALL_FAILED_UPDATE_INCOMPATIBLE</code> → 电视上已有签名不同的版本，先 <code>uninstall</code> 再装。</li>
+<li>提示解析失败 / 装不上 → 大概率是 32/64 位下错了，回去看第 4 步读到的 ABI，或者直接换 <code>universal</code> 包；再重新下载、重新校验 SHA-256。</li>
+<li><code>device offline</code> → 重新 <code>adb connect</code> 一次。</li>
+</ul>
+<h3>3）手机搜不到电视</h3>
+<ul>
+<li>手机和电视是不是同一个 Wi-Fi？访客网络、AP 隔离都会导致搜不到。</li>
+<li>电视上应用是不是在运行（界面显示「等待投屏连接...」）？不在就先打开它。</li>
+<li>把手机 App 里的投屏页面关掉重开，再搜一次。</li>
+</ul>
+<h3>4）搜得到电视，但投不上 / 黑屏 / 没声音</h3>
+<ul>
+<li>先换个视频、换个清晰度再投——个别源的地址带鉴权会失败，这是源站限制，不是接收端的问题。</li>
+<li>从 iPhone 镜像 Netflix 等内容黑屏 → DRM 保护，正常现象。</li>
+<li>投上了但电视上没画面 → 查「显示在其他应用上层」权限（第六节第 6 步）。</li>
+</ul>
+<h3>5）AirPlay 列表里没有电视</h3>
+<p>去<a href="#airplay-fix">第九节</a>，有完整方案。</p>
+<h3>6）电视桌面上找不到应用图标</h3>
+<p>在电视的应用列表里翻一翻（名字叫 <code>Miracast Receiver</code>）；实在找不到，用第 5 步里的 <code>am start</code> 命令直接打开。</p>
+
+<h2 id="airplay-fix">九、专治：AirPlay 列表里没有电视（少数机型）</h2>
+<p>先说清楚是什么情况：<strong>DLNA 一切正常、第 6 步也按要求做了，但 iPhone / Mac 的 AirPlay 列表里始终没有电视。</strong>这不是你的网络问题，也不是操作错了。我们实测的 BRAVIA 4K AE1（Android 14）就属于这一类，下面是原因和解法。</p>
+
+<h3>怎么确认（三个自检）</h3>
+<ol>
+<li>Mac 上运行 <code>dns-sd -B _airplay._tcp local.</code> ——如果看不到电视名，但下面这条能看到，就基本坐实了：
+<pre style="margin:.5rem 0"><code>dns-sd -B _miracast-receiver._tcp local.</code></pre></li>
+<li>（可选）把电视重启一次，先<strong>不要</strong>打开这个应用的主界面，直接看 iPhone 的 AirPlay 列表：如果这时电视出现了，进一步印证是下面说的注册冲突（开机自启的流程不会注册那个冲突的服务）。这只是帮助确认，长期使用还是建议根治。</li>
+<li>保持这两条的观察结果，它们也是给作者提 Issue 时最有用的信息。</li>
+</ol>
+
+<h3>是什么原因（一句话版）</h3>
+<div class="box">
+<p style="margin:.2rem 0">应用向局域网广播两个服务：「AirPlay 服务」和它自定义的「接收服务」，但两个用了<strong>同一个名字</strong>（都是电视的设备名）。部分 Android 系统不允许同名两个服务并存，后注册的那个——恰好是 AirPlay——注册失败，所以列表里是空的。（音频服务因名字带 MAC 前缀，不冲突，所以不在这次故障里。）</p>
+<p style="margin:.2rem 0">Google 已在 2024 年 2 月修复了系统的这个行为（见文末 <a href="https://android-review.googlesource.com/c/platform/packages/modules/Connectivity/+/2968064">AOSP 变更</a>，并补了兼容性测试），通过系统组件更新下发；收不到这类更新的机型（比如国行电视）仍会踩到。</p>
+</div>
+<p>修复思路很简单：<strong>给那个自定义「接收服务」换个名字</strong>（和 AirPlay 不再重名），AirPlay 就能正常注册了。这个自定义服务是应用自己私有的协议，改名不影响任何对外兼容。</p>
+
+<h3>方案 A：反馈给作者（推荐先做）</h3>
+<p>到项目 <a href="https://github.com/weekdayjast/MiracastReceiver/issues">Issues</a> 页提交，附上这些信息（有同款问题的用户越多，官方修复来得越快）：</p>
+<ul>
+<li>电视型号和系统版本（例：BRAVIA 4K AE1 / Android 14）</li>
+<li>软件版本（v1.2.5）和包（armeabi-v7a / arm64-v8a）</li>
+<li>现象：DLNA 正常、8080 端口的 device.xml 正常、7000 端口可连，但 <code>dns-sd -B _airplay._tcp local.</code> 看不到设备</li>
+<li>你的判断：<code>_airplay._tcp</code> 与 <code>_miracast-receiver._tcp</code> 同名注册冲突；建议给后者使用不同的实例名</li>
+</ul>
+<p>如果作者后续发布了修复版，直接装新版即可，下面的重打包步骤就可以跳过。</p>
+
+<h3>方案 B：自己动手，改一行重新打包</h3>
+<p>需要在一台电脑上完成（Windows / macOS 都行），要装 Android Studio。如果你不熟悉这些，可以把本节内容连同整个页面发给 AI，让它带你做（见<a href="#ai">第十一节</a>）。</p>
+<ol>
+<li><strong>装 Android Studio</strong>（官网下载，自带 JDK 和 SDK；首次打开会下载组件，网络要通畅）。</li>
+<li><strong>获取源码：</strong>下载或克隆项目：
+<pre style="margin:.5rem 0"><code>git clone https://github.com/weekdayjast/MiracastReceiver.git</code></pre>
+（也可以直接在 GitHub 页面上 Code → Download ZIP，解压。）</li>
+<li><strong>用 Android Studio 打开项目文件夹</strong>，等它自动 Sync 完成（第一次会比较久）。</li>
+<li><strong>只改一行。</strong>打开文件：
+<pre style="margin:.5rem 0"><code>MiracastReceiver/app/src/main/java/com/weekd/miracastreceiver/discovery/MdnsAdvertiser.kt</code></pre>
+找到方法 <code>startAdvertising</code>，把这一行：
+<pre style="margin:.5rem 0"><code>this.serviceName = serviceName</code></pre>
+改成：
+<pre style="margin:.5rem 0"><code>this.serviceName = "$serviceName MR"</code></pre>
+右边的 <code>serviceName</code> 是方法参数（电视原来的设备名），别改成别的。<strong>只改这一处</strong>——不要动 AirPlay 相关的注册名字，AirPlay 仍然用原来的设备名。</li>
+<li><strong>打包：</strong>菜单 <code>Build → Build App Bundle(s) / APK(s) → Build APK(s)</code>；或在项目目录里用命令行：
+<pre style="margin:.5rem 0"><code>./gradlew assembleDebug
+（32 位电视：./gradlew assembleDebug -PbuildArm32=true
+ 64 位电视：./gradlew assembleDebug -PbuildArm64=true）</code></pre>
+产物在 <code>MiracastReceiver/app/build/outputs/apk/</code> 里，找文件名带 <code>armeabi-v7a</code>（或对应架构）的那个 apk。这是 debug 包，会自动带上可安装的签名，功能与正式版相同。</li>
+<li><strong>先卸载电视上的原版</strong>（签名不同，不卸载装不上）：
+<pre style="margin:.5rem 0"><code>adb -s 192.168.1.30:43733 uninstall com.weekd.miracastreceiver</code></pre></li>
+<li><strong>装新包：</strong>
+<pre style="margin:.5rem 0"><code>adb -s 192.168.1.30:43733 install -r 你的新包文件名.apk</code></pre></li>
+<li><strong>在电视上打开应用</strong>，确认「显示在其他应用上层」等权限仍在（卸载重装后可能需要重新给一次）。</li>
+</ol>
+<p><strong>怎么验证修好了：</strong></p>
+<pre><code>dns-sd -B _airplay._tcp local.
+dns-sd -B _miracast-receiver._tcp local.</code></pre>
+<p>应看到：<strong>AirPlay 服务的名字是电视设备名</strong>（解析过去是 7000 端口），而自定义服务的名字是「设备名 + <code>MR</code>」（8080 端口）。之后在 iPhone 的「屏幕镜像」里选<strong>不带 MR 的那个名字</strong>——带 MR 的是自定义服务，不是 AirPlay。</p>
+<p>以后官方发布新版、想换回官方版：先卸载再装（同样是签名问题）。想留在自己打的包上也完全可以。</p>
+
+<h2 id="safety">十、收尾与安全</h2>
+<ul>
+<li>安装完成后，电脑上执行收尾（断开连接、停掉 ADB 后台）：
+<pre style="margin:.5rem 0"><code>adb disconnect
+adb kill-server</code></pre></li>
+<li>不再需要用无线调试时，在电视上把「无线调试」关掉；开发者选项里的「已配对设备」可以随时「忘记」这台电脑。</li>
+<li>需要维护时再把无线调试打开即可，不用长期开着。</li>
+<li>不要在任何路由器上把 ADB 端口映射到公网；不要在公共网络下开启无线调试。</li>
+<li>请只调试自己拥有或有权管理的设备。</li>
+</ul>
+
+<h2 id="ai">十一、把这篇丢给 AI，让它带你做</h2>
+<p>这篇教程的每个步骤都写明了「命令、预期输出、出错怎么办」，所以也可以<strong>整页交给 AI 帮你做</strong>——适合不想自己琢磨命令行的人。做法：把本页链接（或全文）发给任意 AI（ChatGPT、Claude、DeepSeek、豆包等都行），再附上下面这段话：</p>
+<pre><code>请当我的技术助手，带我在索尼安卓电视上安装一个开源的投屏接收器（用 ADB 无线调试，不需要 root）。目标：国内 App（B站/优酷/爱奇艺）能 DLNA 投屏，iPhone/Mac 能 AirPlay 投屏。
+
+关键信息：
+- 软件：MiracastReceiver（GitHub: weekdayjast/MiracastReceiver），从 Releases 下载 v1.2.5，包名 com.weekd.miracastreceiver
+- 选包：电脑上先读电视 CPU 架构（adb shell getprop ro.product.cpu.abi）。armeabi-v7a 用 32 位包，arm64-v8a 用 64 位包，拿不准用 universal 包
+- 流程：电脑装 ADB → 电视开发者选项打开「无线调试」→ adb pair（用配对端口+配对码）→ adb connect（用连接端口）→ getprop 核对型号 → adb install 安装 → 电视上打开应用并授予「附近设备/位置」「显示在其他应用上层」权限 → 验证：DLNA 用 curl http://电视IP:8080/device.xml（应包含 MediaRenderer）；AirPlay 用 dns-sd -B _airplay._tcp local.（应看到电视名）
+- 注意：电视上有两个端口，「配对端口」只能用于 adb pair，「连接端口」只能用于 adb connect，都以电视屏幕当时显示为准；这两个数字我会从电视上看给你
+- 已知问题：少数索尼机型 AirPlay 列表为空（应用内部两个 mDNS 服务同名冲突），如遇到请参考教程「专治 AirPlay」一节的方案
+
+要求：一步一步来——每步让我做完、把结果（或报错）给你，你确认后再进行下一步；不要跳过验证步骤；涉及 IP、端口、配对码时，等我从电视上读给你，不要自己假设数值。</code></pre>
+<p>如果只想省事，也可以只发一句：「请阅读这个页面并带我一步步完成，每步等我确认」+ 本页链接。</p>
+<div class="box">AI 也会出错。凡是涉及<strong>下载地址、SHA-256 校验值、端口、包名</strong>这些硬信息，一律以本页和官方 Release 页为准；对不上就停下来核对。</div>
+
+<h2 id="cheatsheet">附：速查表</h2>
+<table>
+<thead><tr><th>项目</th><th>内容</th></tr></thead>
+<tbody>
+<tr><td>应用包名</td><td><code>com.weekd.miracastreceiver</code>（界面名：Miracast Receiver）</td></tr>
+<tr><td>DLNA 服务</td><td>HTTP 8080 端口，描述文件 <code>http://电视IP:8080/device.xml</code></td></tr>
+<tr><td>AirPlay 服务</td><td>mDNS <code>_airplay._tcp</code>，端口 7000（音频 <code>_raop._tcp</code>）</td></tr>
+<tr><td>自定义协议服务</td><td>mDNS <code>_miracast-receiver._tcp</code>，端口 8080（修复后名字带 <code>MR</code> 后缀）</td></tr>
+<tr><td>配对命令</td><td><code>adb pair 电视IP:配对端口</code>（然后输入 6 位配对码）</td></tr>
+<tr><td>连接命令</td><td><code>adb connect 电视IP:连接端口</code></td></tr>
+<tr><td>带设备执行命令</td><td><code>adb -s 电视IP:连接端口 shell ...</code></td></tr>
+<tr><td>安装 / 卸载</td><td><code>adb -s 地址:端口 install -r 包.apk</code> / <code>uninstall com.weekd.miracastreceiver</code></td></tr>
+<tr><td>启动应用</td><td><code>adb -s 地址:端口 shell am start -n com.weekd.miracastreceiver/.ui.MainActivity</code></td></tr>
+<tr><td>覆盖层权限（备用）</td><td><code>adb shell appops set com.weekd.miracastreceiver SYSTEM_ALERT_WINDOW allow</code></td></tr>
+</tbody>
+</table>
+
+<h2 id="refs">参考资料与致谢</h2>
+<ul>
+<li><a href="https://github.com/weekdayjast/MiracastReceiver">weekdayjast/MiracastReceiver</a>（MIT 协议）——本文使用的开源接收器，同时支持 DLNA、AirPlay 和无线投屏。用得上就去点个 Star。</li>
+<li><a href="https://shuimu2000.github.io/sony-bravia-free-airplay-guide.html">索尼 BRAVIA 5 免费 AirPlay 实战（原教程）</a>——本文的起点。原教程用的是另一款只做 AirPlay 的开源方案（F-Droid 上的 <a href="https://f-droid.org/packages/io.github.jqssun.airplay/">AirPlay Server</a>），只想投 iPhone 的可以直接看那篇；想要 DLNA 和 AirPlay 一个包全包的，就是本文的路子。</li>
+<li><a href="https://developer.android.com/tools/releases/platform-tools">Google：SDK Platform-Tools 下载页</a>（ADB 官方来源）</li>
+<li><a href="https://developer.android.com/studio/run/device">Google：通过 Wi-Fi 配对调试设备</a></li>
+<li><a href="https://android-review.googlesource.com/c/platform/packages/modules/Connectivity/+/2968064">AOSP 变更 2968064</a>：Android 修复「同名不同类 mDNS 服务」的底层问题（2024-02 合入）</li>
+</ul>
+
+</main>
+<footer>
+<p>步骤按一台 BRAVIA 4K AE1（Android 14、32 位）在 2026-10-12 的实测整理。文中的端口、IP、APK 版本、校验值都会变：动手时以电视屏幕和官方 Release 页显示的为准，不要把例子里的 IP 当成你的电视。请只调试自己拥有或有权管理的设备。</p>
+</footer>
+<script>
+document.querySelectorAll('pre').forEach(function (pre) {
+  var btn = document.createElement('button');
+  btn.className = 'copy';
+  btn.type = 'button';
+  btn.textContent = '复制';
+  btn.addEventListener('click', function () {
+    var codeEl = pre.querySelector('code');
+    var text = codeEl ? codeEl.innerText : pre.innerText;
+    function done(okText) {
+      btn.textContent = okText;
+      setTimeout(function () { btn.textContent = '复制'; }, 1500);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { done('已复制'); }, function () { done('复制失败'); });
+    } else {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); done('已复制'); } catch (e) { done('复制失败'); }
+      document.body.removeChild(ta);
+    }
+  });
+  pre.appendChild(btn);
+});
+</script>
+</body>
+</html>
